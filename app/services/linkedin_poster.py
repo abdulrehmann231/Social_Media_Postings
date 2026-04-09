@@ -1,6 +1,7 @@
 import httpx
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
+LINKEDIN_REST_BASE = "https://api.linkedin.com/rest"
 LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 
@@ -31,6 +32,11 @@ class LinkedInPoster:
             "Content-Type": "application/json",
             "X-Restli-Protocol-Version": "2.0.0",
         }
+        self.rest_headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "LinkedIn-Version": "202401",
+        }
 
     def get_person_urn(self) -> str:
         """Fetch the authenticated user's LinkedIn person URN."""
@@ -41,7 +47,6 @@ class LinkedInPoster:
 
     def upload_image(self, person_urn: str, image_bytes: bytes) -> str:
         """Upload an image to LinkedIn and return the asset URN."""
-        # Step 1: Register the upload
         register_payload = {
             "registerUploadRequest": {
                 "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
@@ -68,7 +73,6 @@ class LinkedInPoster:
         ]["uploadUrl"]
         asset_urn = data["asset"]
 
-        # Step 2: Upload the image bytes
         upload_headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/octet-stream",
@@ -77,6 +81,34 @@ class LinkedInPoster:
         upload_response.raise_for_status()
 
         return asset_urn
+
+    def upload_document(self, person_urn: str, pdf_bytes: bytes) -> str:
+        """Upload a PDF document to LinkedIn and return the document URN."""
+        init_payload = {
+            "initializeUploadRequest": {
+                "owner": person_urn,
+            }
+        }
+
+        response = httpx.post(
+            f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
+            headers=self.rest_headers,
+            json=init_payload,
+        )
+        response.raise_for_status()
+
+        data = response.json()["value"]
+        upload_url = data["uploadUrl"]
+        document_urn = data["document"]
+
+        upload_headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/octet-stream",
+        }
+        upload_response = httpx.put(upload_url, headers=upload_headers, content=pdf_bytes)
+        upload_response.raise_for_status()
+
+        return document_urn
 
     def create_image_post(self, person_urn: str, text: str, image_asset: str) -> dict:
         """Create a post with an image on LinkedIn."""
@@ -103,6 +135,35 @@ class LinkedInPoster:
         response = httpx.post(
             f"{LINKEDIN_API_BASE}/ugcPosts",
             headers=self.headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def create_document_post(self, person_urn: str, text: str, document_urn: str) -> dict:
+        """Create a carousel/document post on LinkedIn."""
+        payload = {
+            "author": person_urn,
+            "commentary": text,
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": "MAIN_FEED",
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": [],
+            },
+            "content": {
+                "media": {
+                    "title": "Sofject",
+                    "id": document_urn,
+                }
+            },
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False,
+        }
+
+        response = httpx.post(
+            f"{LINKEDIN_REST_BASE}/posts",
+            headers=self.rest_headers,
             json=payload,
         )
         response.raise_for_status()

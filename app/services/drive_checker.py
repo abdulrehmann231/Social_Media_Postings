@@ -7,6 +7,8 @@ from google.oauth2.service_account import Credentials
 
 
 IMAGE_MIME_TYPES = ("image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp")
+PDF_MIME_TYPE = "application/pdf"
+ALL_SUPPORTED_TYPES = IMAGE_MIME_TYPES + (PDF_MIME_TYPE,)
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
@@ -18,14 +20,18 @@ def build_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
+def is_pdf(file: dict) -> bool:
+    return file.get("mimeType") == PDF_MIME_TYPE
+
+
 class DriveChecker:
     def __init__(self, service, folder_id: str):
         self.service = service
         self.folder_id = folder_id
 
-    def get_images(self) -> list[dict]:
-        """List all image files in the folder."""
-        mime_filter = " or ".join(f"mimeType='{m}'" for m in IMAGE_MIME_TYPES)
+    def get_files(self) -> list[dict]:
+        """List all image and PDF files in the folder."""
+        mime_filter = " or ".join(f"mimeType='{m}'" for m in ALL_SUPPORTED_TYPES)
         q = f"'{self.folder_id}' in parents and ({mime_filter}) and trashed=false"
 
         response = self.service.files().list(

@@ -114,6 +114,54 @@ class TestCreateImagePost:
                 )
 
 
+class TestUploadDocument:
+    def test_registers_and_uploads_pdf(self):
+        init_response = MagicMock()
+        init_response.status_code = 200
+        init_response.json.return_value = {
+            "value": {
+                "uploadUrl": "https://api.linkedin.com/rest/documentUpload/xxx",
+                "document": "urn:li:document:D789",
+            }
+        }
+
+        upload_response = MagicMock()
+        upload_response.status_code = 201
+
+        poster = LinkedInPoster(access_token="fake_token")
+        with patch("app.services.linkedin_poster.httpx.post", side_effect=[init_response]) as mock_post:
+            with patch("app.services.linkedin_poster.httpx.put", return_value=upload_response) as mock_put:
+                doc_urn = poster.upload_document(
+                    person_urn="urn:li:person:abc123",
+                    pdf_bytes=b"fake pdf data",
+                )
+
+        assert doc_urn == "urn:li:document:D789"
+        mock_put.assert_called_once()
+
+
+class TestCreateDocumentPost:
+    def test_creates_carousel_post(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"id": "urn:li:share:carousel1"}
+
+        poster = LinkedInPoster(access_token="fake_token")
+        with patch("app.services.linkedin_poster.httpx.post", return_value=mock_response) as mock_post:
+            result = poster.create_document_post(
+                person_urn="urn:li:person:abc123",
+                text="Check out our carousel!",
+                document_urn="urn:li:document:D789",
+            )
+
+        assert result["id"] == "urn:li:share:carousel1"
+        body = mock_post.call_args[1]["json"]
+        assert body["author"] == "urn:li:person:abc123"
+        assert body["commentary"] == "Check out our carousel!"
+        assert body["distribution"]["feedDistribution"] == "MAIN_FEED"
+        assert body["content"]["media"]["id"] == "urn:li:document:D789"
+
+
 class TestCreateTextPost:
     def test_posts_text_successfully(self):
         mock_response = MagicMock()

@@ -8,7 +8,7 @@ def _make_file_entry(file_id, name, mime_type="image/png"):
     return {"id": file_id, "name": name, "mimeType": mime_type}
 
 
-class TestGetImages:
+class TestGetFiles:
     def test_returns_image_files_in_folder(self):
         mock_service = MagicMock()
         files = [
@@ -18,18 +18,31 @@ class TestGetImages:
         mock_service.files().list().execute.return_value = {"files": files}
 
         checker = DriveChecker(service=mock_service, folder_id="test_folder")
-        result = checker.get_images()
+        result = checker.get_files()
 
         assert len(result) == 2
         assert result[0]["name"] == "post_01.png"
         assert result[1]["name"] == "post_02.jpg"
+
+    def test_returns_pdf_files(self):
+        mock_service = MagicMock()
+        files = [
+            _make_file_entry("3", "carousel.pdf", mime_type="application/pdf"),
+        ]
+        mock_service.files().list().execute.return_value = {"files": files}
+
+        checker = DriveChecker(service=mock_service, folder_id="test_folder")
+        result = checker.get_files()
+
+        assert len(result) == 1
+        assert result[0]["name"] == "carousel.pdf"
 
     def test_returns_empty_list_when_no_files(self):
         mock_service = MagicMock()
         mock_service.files().list().execute.return_value = {"files": []}
 
         checker = DriveChecker(service=mock_service, folder_id="test_folder")
-        result = checker.get_images()
+        result = checker.get_files()
 
         assert result == []
 
@@ -38,7 +51,7 @@ class TestGetImages:
         mock_service.files().list().execute.return_value = {"files": []}
 
         checker = DriveChecker(service=mock_service, folder_id="abc123")
-        checker.get_images()
+        checker.get_files()
 
         call_kwargs = mock_service.files().list.call_args[1]
         assert "'abc123' in parents" in call_kwargs["q"]
