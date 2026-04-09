@@ -28,6 +28,7 @@ Thumbs.db
 
 # Project
 state.json
+linkedin_token.json
 logs/
 
 # Service account keys
