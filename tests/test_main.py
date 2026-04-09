@@ -56,8 +56,11 @@ def test_run_processes_only_first_file(mock_save, mock_load, mock_get_drive, moc
 
     mock_poster = MagicMock()
     mock_poster.get_person_urn.return_value = "urn:li:person:abc123"
-    mock_poster.create_text_post.return_value = {"id": "urn:li:share:12345"}
+    mock_poster.upload_image.return_value = "urn:li:digitalmediaAsset:D123"
+    mock_poster.create_image_post.return_value = {"id": "urn:li:share:12345"}
     mock_poster_cls.return_value = mock_poster
+
+    mock_checker.download_file.return_value = b"fake image bytes"
 
     response = client.get("/api/run")
 
@@ -68,6 +71,10 @@ def test_run_processes_only_first_file(mock_save, mock_load, mock_get_drive, moc
     assert len(data["results"]) == 1
     assert data["results"][0]["file"] == "post_01.png"
     assert data["results"][0]["posted_to_linkedin"] is True
+    # Verify image was downloaded and uploaded
+    mock_checker.download_file.assert_called_once_with("1")
+    mock_poster.upload_image.assert_called_once()
+    mock_poster.create_image_post.assert_called_once()
 
 
 @patch("app.main.load_linkedin_token", return_value=None)

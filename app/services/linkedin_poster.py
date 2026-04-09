@@ -39,6 +39,75 @@ class LinkedInPoster:
         sub = response.json()["sub"]
         return f"urn:li:person:{sub}"
 
+    def upload_image(self, person_urn: str, image_bytes: bytes) -> str:
+        """Upload an image to LinkedIn and return the asset URN."""
+        # Step 1: Register the upload
+        register_payload = {
+            "registerUploadRequest": {
+                "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
+                "owner": person_urn,
+                "serviceRelationships": [
+                    {
+                        "relationshipType": "OWNER",
+                        "identifier": "urn:li:userGeneratedContent",
+                    }
+                ],
+            }
+        }
+
+        response = httpx.post(
+            f"{LINKEDIN_API_BASE}/assets?action=registerUpload",
+            headers=self.headers,
+            json=register_payload,
+        )
+        response.raise_for_status()
+
+        data = response.json()["value"]
+        upload_url = data["uploadMechanism"][
+            "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+        ]["uploadUrl"]
+        asset_urn = data["asset"]
+
+        # Step 2: Upload the image bytes
+        upload_headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/octet-stream",
+        }
+        upload_response = httpx.put(upload_url, headers=upload_headers, content=image_bytes)
+        upload_response.raise_for_status()
+
+        return asset_urn
+
+    def create_image_post(self, person_urn: str, text: str, image_asset: str) -> dict:
+        """Create a post with an image on LinkedIn."""
+        payload = {
+            "author": person_urn,
+            "lifecycleState": "PUBLISHED",
+            "specificContent": {
+                "com.linkedin.ugc.ShareContent": {
+                    "shareCommentary": {"text": text},
+                    "shareMediaCategory": "IMAGE",
+                    "media": [
+                        {
+                            "status": "READY",
+                            "media": image_asset,
+                        }
+                    ],
+                }
+            },
+            "visibility": {
+                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+            },
+        }
+
+        response = httpx.post(
+            f"{LINKEDIN_API_BASE}/ugcPosts",
+            headers=self.headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def create_text_post(self, person_urn: str, text: str) -> dict:
         """Create a text-only post on LinkedIn."""
         payload = {

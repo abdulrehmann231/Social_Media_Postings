@@ -134,7 +134,10 @@ def run():
         try:
             poster = LinkedInPoster(access_token=token)
             person_urn = poster.get_person_urn()
-            poster.create_text_post(person_urn=person_urn, text=captions["linkedin"])
+            # Download image from Drive and upload to LinkedIn
+            image_bytes = checker.download_file(file["id"])
+            image_asset = poster.upload_image(person_urn=person_urn, image_bytes=image_bytes)
+            poster.create_image_post(person_urn=person_urn, text=captions["linkedin"], image_asset=image_asset)
             entry["posted_to_linkedin"] = True
             logger.info("Posted to LinkedIn: %s", file["name"])
         except Exception as e:
