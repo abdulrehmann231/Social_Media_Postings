@@ -8,8 +8,14 @@ from fastapi import FastAPI
 from app.config import get_drive_folder_id, get_groq_api_key
 from app.services.drive_checker import DriveChecker, build_drive_service
 from app.services.caption_generator import CaptionGenerator, build_groq_client
+from app.services.caption_log import append_caption_log
 
 app = FastAPI(title="Social Media Posting Agent")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 STATE_FILE = "state.json"
@@ -71,6 +77,13 @@ def run():
         }
         results.append(entry)
         logger.info("Generated captions for %s: %s", file["name"], json.dumps(captions))
+
+        append_caption_log({
+            "file": file["name"],
+            "file_id": file["id"],
+            "captions": captions,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
     save_last_checked(datetime.now(timezone.utc))
 
