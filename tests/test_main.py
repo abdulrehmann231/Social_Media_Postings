@@ -16,11 +16,11 @@ def test_health():
 
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-@patch("app.main.load_last_checked")
-@patch("app.main.save_last_checked")
+@patch("app.main.load_posted_ids")
+@patch("app.main.save_posted_ids")
 @patch("app.main.load_linkedin_token", return_value=None)
-def test_run_no_new_files(mock_token, mock_save, mock_load, mock_get_drive, mock_get_caption):
-    mock_load.return_value = datetime(2026, 4, 9, 0, 0, 0, tzinfo=timezone.utc)
+def test_run_no_new_files(mock_token, mock_save_ids, mock_load_ids, mock_get_drive, mock_get_caption):
+    mock_load_ids.return_value = set()
     mock_checker = MagicMock()
     mock_checker.get_new_files.return_value = []
     mock_get_drive.return_value = mock_checker
@@ -37,10 +37,10 @@ def test_run_no_new_files(mock_token, mock_save, mock_load, mock_get_drive, mock
 @patch("app.main.load_linkedin_token", return_value="fake_token")
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-@patch("app.main.load_last_checked")
-@patch("app.main.save_last_checked")
-def test_run_processes_only_first_file(mock_save, mock_load, mock_get_drive, mock_get_caption, mock_token, mock_poster_cls):
-    mock_load.return_value = datetime(2026, 4, 9, 0, 0, 0, tzinfo=timezone.utc)
+@patch("app.main.load_posted_ids")
+@patch("app.main.save_posted_ids")
+def test_run_processes_first_unposted_file(mock_save_ids, mock_load_ids, mock_get_drive, mock_get_caption, mock_token, mock_poster_cls):
+    mock_load_ids.return_value = set()
 
     mock_checker = MagicMock()
     mock_checker.get_new_files.return_value = [
@@ -48,6 +48,7 @@ def test_run_processes_only_first_file(mock_save, mock_load, mock_get_drive, moc
         {"id": "2", "name": "post_02.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T11:00:00Z"},
     ]
     mock_checker.get_text_content.return_value = "Tech launch post"
+    mock_checker.download_file.return_value = b"fake image bytes"
     mock_get_drive.return_value = mock_checker
 
     mock_generator = MagicMock()
@@ -60,31 +61,89 @@ def test_run_processes_only_first_file(mock_save, mock_load, mock_get_drive, moc
     mock_poster.create_image_post.return_value = {"id": "urn:li:share:12345"}
     mock_poster_cls.return_value = mock_poster
 
-    mock_checker.download_file.return_value = b"fake image bytes"
+    response = client.get("/api/run")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["captions_generated"] == 1
+    assert data["results"][0]["file"] == "post_01.png"
+    assert data["results"][0]["posted_to_linkedin"] is True
+    # Verify file ID "1" was saved as posted
+    mock_save_ids.assert_called_once()
+    saved_ids = mock_save_ids.call_args[0][0]
+    assert "1" in saved_ids
+
+
+@patch("app.main.LinkedInPoster")
+@patch("app.main.load_linkedin_token", return_value="fake_token")
+@patch("app.main.get_caption_generator")
+@patch("app.main.get_drive_checker")
+@patch("app.main.load_posted_ids")
+@patch("app.main.save_posted_ids")
+def test_run_skips_already_posted_files(mock_save_ids, mock_load_ids, mock_get_drive, mock_get_caption, mock_token, mock_poster_cls):
+    # File "1" was already posted
+    mock_load_ids.return_value = {"1"}
+
+    mock_checker = MagicMock()
+    mock_checker.get_new_files.return_value = [
+        {"id": "1", "name": "post_01.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T10:00:00Z"},
+        {"id": "2", "name": "post_02.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T11:00:00Z"},
+    ]
+    mock_checker.get_text_content.return_value = "Second post"
+    mock_checker.download_file.return_value = b"image bytes"
+    mock_get_drive.return_value = mock_checker
+
+    mock_generator = MagicMock()
+    mock_generator.generate.return_value = {"linkedin": "Second post caption"}
+    mock_get_caption.return_value = mock_generator
+
+    mock_poster = MagicMock()
+    mock_poster.get_person_urn.return_value = "urn:li:person:abc123"
+    mock_poster.upload_image.return_value = "urn:li:digitalmediaAsset:D456"
+    mock_poster.create_image_post.return_value = {"id": "urn:li:share:67890"}
+    mock_poster_cls.return_value = mock_poster
 
     response = client.get("/api/run")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["files_found"] == 2
-    assert data["captions_generated"] == 1
-    assert len(data["results"]) == 1
-    assert data["results"][0]["file"] == "post_01.png"
-    assert data["results"][0]["posted_to_linkedin"] is True
-    # Verify image was downloaded, sent to caption generator, and uploaded to LinkedIn
-    mock_checker.download_file.assert_called_once_with("1")
-    mock_generator.generate.assert_called_once_with(image_bytes=b"fake image bytes", context="Tech launch post")
-    mock_poster.upload_image.assert_called_once()
-    mock_poster.create_image_post.assert_called_once()
+    # Should process file "2", not "1"
+    assert data["results"][0]["file"] == "post_02.png"
+    saved_ids = mock_save_ids.call_args[0][0]
+    assert "1" in saved_ids
+    assert "2" in saved_ids
+
+
+@patch("app.main.get_caption_generator")
+@patch("app.main.get_drive_checker")
+@patch("app.main.load_posted_ids")
+@patch("app.main.save_posted_ids")
+@patch("app.main.load_linkedin_token", return_value=None)
+def test_run_all_files_already_posted(mock_token, mock_save_ids, mock_load_ids, mock_get_drive, mock_get_caption):
+    mock_load_ids.return_value = {"1", "2"}
+
+    mock_checker = MagicMock()
+    mock_checker.get_new_files.return_value = [
+        {"id": "1", "name": "post_01.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T10:00:00Z"},
+        {"id": "2", "name": "post_02.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T11:00:00Z"},
+    ]
+    mock_get_drive.return_value = mock_checker
+
+    response = client.get("/api/run")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["captions_generated"] == 0
+    assert data["results"] == []
 
 
 @patch("app.main.load_linkedin_token", return_value=None)
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-@patch("app.main.load_last_checked")
-@patch("app.main.save_last_checked")
-def test_run_skips_linkedin_when_no_token(mock_save, mock_load, mock_get_drive, mock_get_caption, mock_token):
-    mock_load.return_value = datetime(2026, 4, 9, 0, 0, 0, tzinfo=timezone.utc)
+@patch("app.main.load_posted_ids")
+@patch("app.main.save_posted_ids")
+def test_run_skips_linkedin_when_no_token(mock_save_ids, mock_load_ids, mock_get_drive, mock_get_caption, mock_token):
+    mock_load_ids.return_value = set()
 
     mock_checker = MagicMock()
     mock_checker.get_new_files.return_value = [
@@ -108,10 +167,10 @@ def test_run_skips_linkedin_when_no_token(mock_save, mock_load, mock_get_drive, 
 @patch("app.main.load_linkedin_token", return_value=None)
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-@patch("app.main.load_last_checked")
-@patch("app.main.save_last_checked")
-def test_run_uses_filename_when_no_txt(mock_save, mock_load, mock_get_drive, mock_get_caption, mock_token):
-    mock_load.return_value = datetime(2026, 4, 9, 0, 0, 0, tzinfo=timezone.utc)
+@patch("app.main.load_posted_ids")
+@patch("app.main.save_posted_ids")
+def test_run_uses_filename_when_no_txt(mock_save_ids, mock_load_ids, mock_get_drive, mock_get_caption, mock_token):
+    mock_load_ids.return_value = set()
 
     mock_checker = MagicMock()
     mock_checker.get_new_files.return_value = [

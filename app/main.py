@@ -32,17 +32,19 @@ STATE_FILE = "state.json"
 TOKEN_FILE = "linkedin_token.json"
 
 
-def load_last_checked() -> datetime:
+def load_posted_ids() -> set[str]:
+    """Load the set of Drive file IDs that have already been posted."""
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE) as f:
             data = json.load(f)
-            return datetime.fromisoformat(data["last_checked"])
-    return datetime(2000, 1, 1, tzinfo=timezone.utc)
+            return set(data.get("posted_ids", []))
+    return set()
 
 
-def save_last_checked(dt: datetime):
+def save_posted_ids(posted_ids: set[str]):
+    """Save the set of posted file IDs."""
     with open(STATE_FILE, "w") as f:
-        json.dump({"last_checked": dt.isoformat()}, f)
+        json.dump({"posted_ids": sorted(posted_ids)}, f)
 
 
 def load_linkedin_token() -> str | None:
@@ -102,18 +104,26 @@ def auth_linkedin_callback(code: str):
 
 @app.get("/api/run")
 def run():
-    last_checked = load_last_checked()
+    posted_ids = load_posted_ids()
     checker = get_drive_checker()
     generator = get_caption_generator()
 
-    new_files = checker.get_new_files(since=last_checked)
+    # Get all files from Drive folder
+    all_files = checker.get_new_files(since=datetime(2000, 1, 1, tzinfo=timezone.utc))
 
-    if not new_files:
-        logger.info("No new files found.")
+    if not all_files:
+        logger.info("No files found in Drive folder.")
         return {"files_found": 0, "captions_generated": 0, "results": []}
 
-    # Process only the first (oldest) new file per run
-    file = new_files[0]
+    # Filter out already-posted files
+    unposted = [f for f in all_files if f["id"] not in posted_ids]
+
+    if not unposted:
+        logger.info("All %d files already posted.", len(all_files))
+        return {"files_found": len(all_files), "captions_generated": 0, "results": []}
+
+    # Process only the first unposted file
+    file = unposted[0]
     image_bytes = checker.download_file(file["id"])
     context = checker.get_text_content(file["name"])
 
@@ -156,10 +166,12 @@ def run():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
-    save_last_checked(datetime.now(timezone.utc))
+    # Mark file as posted
+    posted_ids.add(file["id"])
+    save_posted_ids(posted_ids)
 
     return {
-        "files_found": len(new_files),
+        "files_found": len(all_files),
         "captions_generated": 1,
         "results": [entry],
     }
