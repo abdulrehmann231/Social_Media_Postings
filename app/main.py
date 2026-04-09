@@ -8,7 +8,8 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
 from app.config import (
-    get_drive_folder_id,
+    get_drive_unposted_folder_id,
+    get_drive_posted_folder_id,
     get_groq_api_key,
     get_linkedin_client_id,
     get_linkedin_client_secret,
@@ -28,23 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-STATE_FILE = "state.json"
 TOKEN_FILE = "linkedin_token.json"
-
-
-def load_posted_ids() -> set[str]:
-    """Load the set of Drive file IDs that have already been posted."""
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE) as f:
-            data = json.load(f)
-            return set(data.get("posted_ids", []))
-    return set()
-
-
-def save_posted_ids(posted_ids: set[str]):
-    """Save the set of posted file IDs."""
-    with open(STATE_FILE, "w") as f:
-        json.dump({"posted_ids": sorted(posted_ids)}, f)
 
 
 def load_linkedin_token() -> str | None:
@@ -63,7 +48,7 @@ def save_linkedin_token(token_data: dict):
 
 def get_drive_checker() -> DriveChecker:
     service = build_drive_service()
-    return DriveChecker(service=service, folder_id=get_drive_folder_id())
+    return DriveChecker(service=service, folder_id=get_drive_unposted_folder_id())
 
 
 def get_caption_generator() -> CaptionGenerator:
@@ -104,26 +89,19 @@ def auth_linkedin_callback(code: str):
 
 @app.get("/api/run")
 def run():
-    posted_ids = load_posted_ids()
     checker = get_drive_checker()
     generator = get_caption_generator()
+    posted_folder_id = get_drive_posted_folder_id()
 
-    # Get all files from Drive folder
-    all_files = checker.get_new_files(since=datetime(2000, 1, 1, tzinfo=timezone.utc))
+    # Get images from the unposted folder
+    unposted_files = checker.get_images()
 
-    if not all_files:
-        logger.info("No files found in Drive folder.")
+    if not unposted_files:
+        logger.info("No unposted files found.")
         return {"files_found": 0, "captions_generated": 0, "results": []}
 
-    # Filter out already-posted files
-    unposted = [f for f in all_files if f["id"] not in posted_ids]
-
-    if not unposted:
-        logger.info("All %d files already posted.", len(all_files))
-        return {"files_found": len(all_files), "captions_generated": 0, "results": []}
-
-    # Process only the first unposted file
-    file = unposted[0]
+    # Process only the first file
+    file = unposted_files[0]
     image_bytes = checker.download_file(file["id"])
     context = checker.get_text_content(file["name"])
 
@@ -145,7 +123,6 @@ def run():
         try:
             poster = LinkedInPoster(access_token=token)
             person_urn = poster.get_person_urn()
-            # Upload image to LinkedIn (already downloaded above)
             image_asset = poster.upload_image(person_urn=person_urn, image_bytes=image_bytes)
             poster.create_image_post(person_urn=person_urn, text=captions["linkedin"], image_asset=image_asset)
             entry["posted_to_linkedin"] = True
@@ -166,12 +143,12 @@ def run():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
-    # Mark file as posted
-    posted_ids.add(file["id"])
-    save_posted_ids(posted_ids)
+    # Move file from unposted to posted folder
+    checker.move_file(file_id=file["id"], dest_folder_id=posted_folder_id)
+    logger.info("Moved %s to posted folder.", file["name"])
 
     return {
-        "files_found": len(all_files),
+        "files_found": len(unposted_files),
         "captions_generated": 1,
         "results": [entry],
     }

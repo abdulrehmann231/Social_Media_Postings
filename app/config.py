@@ -4,8 +4,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_drive_folder_id() -> str:
-    return os.environ["DRIVE_FOLDER_ID"]
+def get_drive_unposted_folder_id() -> str:
+    return os.environ["DRIVE_UNPOSTED_FOLDER_ID"]
+
+
+def get_drive_posted_folder_id() -> str:
+    return os.environ["DRIVE_POSTED_FOLDER_ID"]
 
 
 def get_groq_api_key() -> str:

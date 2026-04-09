@@ -1,14 +1,13 @@
 import os
 import base64
 import json
-from datetime import datetime, timezone
 
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 
 
 IMAGE_MIME_TYPES = ("image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp")
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 def build_drive_service():
@@ -24,16 +23,15 @@ class DriveChecker:
         self.service = service
         self.folder_id = folder_id
 
-    def get_new_files(self, since: datetime) -> list[dict]:
-        """List image files in the folder modified after `since`."""
-        since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
+    def get_images(self) -> list[dict]:
+        """List all image files in the folder."""
         mime_filter = " or ".join(f"mimeType='{m}'" for m in IMAGE_MIME_TYPES)
-        q = f"'{self.folder_id}' in parents and modifiedTime > '{since_str}' and ({mime_filter}) and trashed=false"
+        q = f"'{self.folder_id}' in parents and ({mime_filter}) and trashed=false"
 
         response = self.service.files().list(
             q=q,
-            fields="files(id, name, mimeType, modifiedTime)",
-            orderBy="modifiedTime",
+            fields="files(id, name, mimeType)",
+            orderBy="createdTime",
         ).execute()
 
         return response.get("files", [])
@@ -58,3 +56,12 @@ class DriveChecker:
 
         content_bytes = self.service.files().get_media(fileId=files[0]["id"]).execute()
         return content_bytes.decode("utf-8")
+
+    def move_file(self, file_id: str, dest_folder_id: str) -> dict:
+        """Move a file from this folder to the destination folder."""
+        return self.service.files().update(
+            fileId=file_id,
+            addParents=dest_folder_id,
+            removeParents=self.folder_id,
+            fields="id, parents",
+        ).execute()

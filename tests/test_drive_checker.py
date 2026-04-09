@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 from app.services.drive_checker import DriveChecker
 
 
-def _make_file_entry(file_id, name, mime_type="image/png", modified_time="2026-04-09T10:00:00.000Z"):
-    return {"id": file_id, "name": name, "mimeType": mime_type, "modifiedTime": modified_time}
+def _make_file_entry(file_id, name, mime_type="image/png"):
+    return {"id": file_id, "name": name, "mimeType": mime_type}
 
 
-class TestGetNewFiles:
-    def test_returns_image_files_modified_after_since(self):
+class TestGetImages:
+    def test_returns_image_files_in_folder(self):
         mock_service = MagicMock()
         files = [
             _make_file_entry("1", "post_01.png"),
@@ -18,8 +18,7 @@ class TestGetNewFiles:
         mock_service.files().list().execute.return_value = {"files": files}
 
         checker = DriveChecker(service=mock_service, folder_id="test_folder")
-        since = datetime(2026, 4, 9, 0, 0, 0, tzinfo=timezone.utc)
-        result = checker.get_new_files(since)
+        result = checker.get_images()
 
         assert len(result) == 2
         assert result[0]["name"] == "post_01.png"
@@ -30,22 +29,19 @@ class TestGetNewFiles:
         mock_service.files().list().execute.return_value = {"files": []}
 
         checker = DriveChecker(service=mock_service, folder_id="test_folder")
-        since = datetime(2026, 4, 9, 0, 0, 0, tzinfo=timezone.utc)
-        result = checker.get_new_files(since)
+        result = checker.get_images()
 
         assert result == []
 
-    def test_passes_correct_query_with_folder_and_time(self):
+    def test_queries_correct_folder(self):
         mock_service = MagicMock()
         mock_service.files().list().execute.return_value = {"files": []}
 
         checker = DriveChecker(service=mock_service, folder_id="abc123")
-        since = datetime(2026, 4, 9, 8, 30, 0, tzinfo=timezone.utc)
-        checker.get_new_files(since)
+        checker.get_images()
 
         call_kwargs = mock_service.files().list.call_args[1]
-        assert "abc123" in call_kwargs["q"]
-        assert "2026-04-09T08:30:00" in call_kwargs["q"]
+        assert "'abc123' in parents" in call_kwargs["q"]
 
 
 class TestDownloadFile:
@@ -65,7 +61,6 @@ class TestDownloadFile:
 class TestGetTextContent:
     def test_returns_text_for_companion_file(self):
         mock_service = MagicMock()
-        # Simulate finding a companion .txt file
         mock_service.files().list().execute.return_value = {
             "files": [{"id": "txt_1", "name": "post_01.txt"}]
         }
@@ -86,3 +81,28 @@ class TestGetTextContent:
         result = checker.get_text_content("post_01.png")
 
         assert result is None
+
+
+class TestMoveFile:
+    def test_moves_file_to_destination_folder(self):
+        mock_service = MagicMock()
+        mock_service.files().update().execute.return_value = {"id": "file_1"}
+
+        checker = DriveChecker(service=mock_service, folder_id="source_folder")
+        checker.move_file(file_id="file_1", dest_folder_id="dest_folder")
+
+        mock_service.files().update.assert_called_with(
+            fileId="file_1",
+            addParents="dest_folder",
+            removeParents="source_folder",
+            fields="id, parents",
+        )
+
+    def test_move_returns_updated_file(self):
+        mock_service = MagicMock()
+        mock_service.files().update().execute.return_value = {"id": "file_1", "parents": ["dest"]}
+
+        checker = DriveChecker(service=mock_service, folder_id="source_folder")
+        result = checker.move_file(file_id="file_1", dest_folder_id="dest_folder")
+
+        assert result["id"] == "file_1"
