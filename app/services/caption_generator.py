@@ -5,7 +5,7 @@ import re
 
 from groq import Groq
 
-VISION_MODEL = "llama-3.2-90b-vision-preview"
+VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 SYSTEM_PROMPT = """You are the social media manager for Sofject, a software house.
 Website: sofject.com
