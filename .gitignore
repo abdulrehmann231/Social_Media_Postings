@@ -29,3 +29,8 @@ Thumbs.db
 # Project
 state.json
 logs/
+
+# Service account keys
+*.json
+!pyproject.toml
+.claude/
