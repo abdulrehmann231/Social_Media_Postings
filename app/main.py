@@ -16,10 +16,11 @@ from app.config import (
     get_linkedin_redirect_uri,
     get_linkedin_access_token,
 )
-from app.services.drive_checker import DriveChecker, build_drive_service
+from app.services.drive_checker import DriveChecker, build_drive_service, is_pdf
 from app.services.caption_generator import CaptionGenerator, build_groq_client
 from app.services.caption_log import append_caption_log
 from app.services.linkedin_poster import LinkedInPoster, exchange_code_for_token
+from app.services.pdf_utils import pdf_first_page_to_png
 
 app = FastAPI(title="Social Media Posting Agent")
 
@@ -93,8 +94,8 @@ def run():
     generator = get_caption_generator()
     posted_folder_id = get_drive_posted_folder_id()
 
-    # Get images from the unposted folder
-    unposted_files = checker.get_images()
+    # Get files from the unposted folder
+    unposted_files = checker.get_files()
 
     if not unposted_files:
         logger.info("No unposted files found.")
@@ -102,13 +103,17 @@ def run():
 
     # Process only the first file
     file = unposted_files[0]
-    image_bytes = checker.download_file(file["id"])
+    file_bytes = checker.download_file(file["id"])
+    file_is_pdf = is_pdf(file)
     context = checker.get_text_content(file["name"])
 
+    # For PDFs, convert first page to PNG for the vision model
+    vision_image = pdf_first_page_to_png(file_bytes) if file_is_pdf else file_bytes
+
     if context:
-        captions = generator.generate(image_bytes=image_bytes, context=context)
+        captions = generator.generate(image_bytes=vision_image, context=context)
     else:
-        captions = generator.generate(image_bytes=image_bytes, filename=file["name"])
+        captions = generator.generate(image_bytes=vision_image, filename=file["name"])
 
     entry = {
         "file": file["name"],
@@ -123,8 +128,12 @@ def run():
         try:
             poster = LinkedInPoster(access_token=token)
             person_urn = poster.get_person_urn()
-            image_asset = poster.upload_image(person_urn=person_urn, image_bytes=image_bytes)
-            poster.create_image_post(person_urn=person_urn, text=captions["linkedin"], image_asset=image_asset)
+            if file_is_pdf:
+                doc_urn = poster.upload_document(person_urn=person_urn, pdf_bytes=file_bytes)
+                poster.create_document_post(person_urn=person_urn, text=captions["linkedin"], document_urn=doc_urn)
+            else:
+                image_asset = poster.upload_image(person_urn=person_urn, image_bytes=file_bytes)
+                poster.create_image_post(person_urn=person_urn, text=captions["linkedin"], image_asset=image_asset)
             entry["posted_to_linkedin"] = True
             logger.info("Posted to LinkedIn: %s", file["name"])
         except Exception as e:
