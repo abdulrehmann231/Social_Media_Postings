@@ -1,20 +1,21 @@
+import base64
 import json
 import os
 import re
 
 from groq import Groq
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+VISION_MODEL = "llama-3.2-90b-vision-preview"
 
 SYSTEM_PROMPT = """You are the social media manager for Sofject, a software house.
 Website: sofject.com
 
-Generate a professional LinkedIn caption for this post.
+Look at the provided image and generate a professional LinkedIn caption for this post.
 - Professional, insightful tone
-- Highlight Sofject's expertise in software development
+- Describe what you see in the image and relate it to Sofject's expertise in software development
 - No hashtags in the body, add 3-5 relevant hashtags at the end
 - Max 3000 characters
-- Do NOT use generic filler — be specific to the context provided
+- Do NOT use generic filler — be specific to the image and context provided
 
 Return ONLY valid JSON with this exact structure:
 {"linkedin": "caption here"}"""
@@ -25,23 +26,33 @@ def build_groq_client() -> Groq:
 
 
 class CaptionGenerator:
-    def __init__(self, client: Groq = None, model: str = DEFAULT_MODEL):
+    def __init__(self, client: Groq = None, model: str = VISION_MODEL):
         self.client = client
         self.model = model
 
-    def generate(self, context: str | None = None, filename: str | None = None) -> dict:
+    def generate(self, image_bytes: bytes, context: str | None = None, filename: str | None = None) -> dict:
         if context:
-            user_msg = f"Topic/Context: {context}"
+            text = f"Topic/Context: {context}"
         elif filename:
-            user_msg = f"Generate a caption based on this image filename: {filename}"
+            text = f"Generate a caption based on this image. Filename: {filename}"
         else:
-            user_msg = "Generate a LinkedIn caption for a new post from Sofject."
+            text = "Generate a LinkedIn caption for this image from Sofject."
+
+        b64_image = base64.b64encode(image_bytes).decode()
+
+        user_content = [
+            {"type": "text", "text": text},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64_image}"},
+            },
+        ]
 
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_msg},
+                {"role": "user", "content": user_content},
             ],
             temperature=0.7,
         )
@@ -50,7 +61,6 @@ class CaptionGenerator:
         return self._parse_response(raw)
 
     def _parse_response(self, raw: str) -> dict:
-        # Strip markdown code blocks if present
         cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip())
         cleaned = re.sub(r"\s*```$", "", cleaned)
 

@@ -71,8 +71,9 @@ def test_run_processes_only_first_file(mock_save, mock_load, mock_get_drive, moc
     assert len(data["results"]) == 1
     assert data["results"][0]["file"] == "post_01.png"
     assert data["results"][0]["posted_to_linkedin"] is True
-    # Verify image was downloaded and uploaded
+    # Verify image was downloaded, sent to caption generator, and uploaded to LinkedIn
     mock_checker.download_file.assert_called_once_with("1")
+    mock_generator.generate.assert_called_once_with(image_bytes=b"fake image bytes", context="Tech launch post")
     mock_poster.upload_image.assert_called_once()
     mock_poster.create_image_post.assert_called_once()
 
@@ -90,6 +91,7 @@ def test_run_skips_linkedin_when_no_token(mock_save, mock_load, mock_get_drive, 
         {"id": "1", "name": "post_01.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T10:00:00Z"},
     ]
     mock_checker.get_text_content.return_value = "Test post"
+    mock_checker.download_file.return_value = b"image data"
     mock_get_drive.return_value = mock_checker
 
     mock_generator = MagicMock()
@@ -116,6 +118,7 @@ def test_run_uses_filename_when_no_txt(mock_save, mock_load, mock_get_drive, moc
         {"id": "2", "name": "sunset_photo.jpg", "mimeType": "image/jpeg", "modifiedTime": "2026-04-09T10:00:00Z"},
     ]
     mock_checker.get_text_content.return_value = None
+    mock_checker.download_file.return_value = b"sunset image"
     mock_get_drive.return_value = mock_checker
 
     mock_generator = MagicMock()
@@ -125,7 +128,7 @@ def test_run_uses_filename_when_no_txt(mock_save, mock_load, mock_get_drive, moc
     response = client.get("/api/run")
 
     assert response.status_code == 200
-    mock_generator.generate.assert_called_once_with(context=None, filename="sunset_photo.jpg")
+    mock_generator.generate.assert_called_once_with(image_bytes=b"sunset image", filename="sunset_photo.jpg")
 
 
 def test_auth_linkedin_redirects():

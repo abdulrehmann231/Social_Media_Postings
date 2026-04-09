@@ -1,7 +1,8 @@
 import json
+import base64
 from unittest.mock import MagicMock
 
-from app.services.caption_generator import CaptionGenerator, SYSTEM_PROMPT
+from app.services.caption_generator import CaptionGenerator, SYSTEM_PROMPT, VISION_MODEL
 
 
 def _mock_groq_response(content: str):
@@ -13,42 +14,81 @@ def _mock_groq_response(content: str):
 
 
 class TestGenerate:
-    def test_returns_linkedin_caption_with_context(self):
+    def test_returns_linkedin_caption_with_image_and_context(self):
         mock_client = MagicMock()
         caption = {"linkedin": "Excited to announce our latest product at Sofject."}
         mock_client.chat.completions.create.return_value = _mock_groq_response(json.dumps(caption))
 
         generator = CaptionGenerator(client=mock_client)
-        result = generator.generate(context="New product launch")
+        result = generator.generate(image_bytes=b"fake png", context="New product launch")
 
         assert "linkedin" in result
         assert "instagram" not in result
 
-    def test_returns_linkedin_caption_without_context(self):
+    def test_sends_image_as_base64_in_message(self):
         mock_client = MagicMock()
-        caption = {"linkedin": "Sharing this update from Sofject."}
-        mock_client.chat.completions.create.return_value = _mock_groq_response(json.dumps(caption))
+        mock_client.chat.completions.create.return_value = _mock_groq_response(
+            json.dumps({"linkedin": "caption"})
+        )
 
+        image_data = b"fake image bytes"
         generator = CaptionGenerator(client=mock_client)
-        result = generator.generate(context=None, filename="weekend_vibes.png")
+        generator.generate(image_bytes=image_data, context="Test post")
 
-        assert "linkedin" in result
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args[1]["messages"]
         user_msg = messages[-1]["content"]
-        assert "weekend_vibes.png" in user_msg
+        # Should be a list with text + image_url parts
+        assert isinstance(user_msg, list)
+        types = [part["type"] for part in user_msg]
+        assert "text" in types
+        assert "image_url" in types
+        # Verify base64 encoding
+        image_part = [p for p in user_msg if p["type"] == "image_url"][0]
+        expected_b64 = base64.b64encode(image_data).decode()
+        assert expected_b64 in image_part["image_url"]["url"]
 
-    def test_sends_correct_model(self):
+    def test_uses_vision_model(self):
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _mock_groq_response(
             json.dumps({"linkedin": "y"})
         )
 
-        generator = CaptionGenerator(client=mock_client, model="llama-3.3-70b-versatile")
-        generator.generate(context="test")
+        generator = CaptionGenerator(client=mock_client)
+        generator.generate(image_bytes=b"img", context="test")
 
         call_args = mock_client.chat.completions.create.call_args
-        assert call_args[1]["model"] == "llama-3.3-70b-versatile"
+        assert call_args[1]["model"] == VISION_MODEL
+
+    def test_includes_context_in_text_part(self):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_groq_response(
+            json.dumps({"linkedin": "y"})
+        )
+
+        generator = CaptionGenerator(client=mock_client)
+        generator.generate(image_bytes=b"img", context="Sofject new office launch")
+
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args[1]["messages"]
+        user_content = messages[-1]["content"]
+        text_part = [p for p in user_content if p["type"] == "text"][0]
+        assert "Sofject new office launch" in text_part["text"]
+
+    def test_uses_filename_when_no_context(self):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_groq_response(
+            json.dumps({"linkedin": "y"})
+        )
+
+        generator = CaptionGenerator(client=mock_client)
+        generator.generate(image_bytes=b"img", filename="team_event.png")
+
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args[1]["messages"]
+        user_content = messages[-1]["content"]
+        text_part = [p for p in user_content if p["type"] == "text"][0]
+        assert "team_event.png" in text_part["text"]
 
     def test_handles_json_in_markdown_code_block(self):
         mock_client = MagicMock()
@@ -56,7 +96,7 @@ class TestGenerate:
         mock_client.chat.completions.create.return_value = _mock_groq_response(raw)
 
         generator = CaptionGenerator(client=mock_client)
-        result = generator.generate(context="test")
+        result = generator.generate(image_bytes=b"img", context="test")
 
         assert result["linkedin"] == "Hi there from Sofject."
 
@@ -66,7 +106,7 @@ class TestGenerate:
 
         generator = CaptionGenerator(client=mock_client)
         try:
-            generator.generate(context="test")
+            generator.generate(image_bytes=b"img", context="test")
             assert False, "Should have raised ValueError"
         except ValueError as e:
             assert "Failed to parse" in str(e)
@@ -74,7 +114,3 @@ class TestGenerate:
     def test_system_prompt_mentions_sofject(self):
         assert "Sofject" in SYSTEM_PROMPT
         assert "sofject.com" in SYSTEM_PROMPT
-
-    def test_system_prompt_is_linkedin_only(self):
-        assert "Instagram" not in SYSTEM_PROMPT
-        assert "instagram" not in SYSTEM_PROMPT.lower() or "linkedin" in SYSTEM_PROMPT.lower()

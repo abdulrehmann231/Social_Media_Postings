@@ -114,12 +114,13 @@ def run():
 
     # Process only the first (oldest) new file per run
     file = new_files[0]
+    image_bytes = checker.download_file(file["id"])
     context = checker.get_text_content(file["name"])
 
     if context:
-        captions = generator.generate(context=context)
+        captions = generator.generate(image_bytes=image_bytes, context=context)
     else:
-        captions = generator.generate(context=None, filename=file["name"])
+        captions = generator.generate(image_bytes=image_bytes, filename=file["name"])
 
     entry = {
         "file": file["name"],
@@ -134,8 +135,7 @@ def run():
         try:
             poster = LinkedInPoster(access_token=token)
             person_urn = poster.get_person_urn()
-            # Download image from Drive and upload to LinkedIn
-            image_bytes = checker.download_file(file["id"])
+            # Upload image to LinkedIn (already downloaded above)
             image_asset = poster.upload_image(person_urn=person_urn, image_bytes=image_bytes)
             poster.create_image_post(person_urn=person_urn, text=captions["linkedin"], image_asset=image_asset)
             entry["posted_to_linkedin"] = True
