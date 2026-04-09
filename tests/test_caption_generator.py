@@ -1,7 +1,7 @@
 import json
 from unittest.mock import MagicMock
 
-from app.services.caption_generator import CaptionGenerator
+from app.services.caption_generator import CaptionGenerator, SYSTEM_PROMPT
 
 
 def _mock_groq_response(content: str):
@@ -13,28 +13,26 @@ def _mock_groq_response(content: str):
 
 
 class TestGenerate:
-    def test_returns_captions_with_context(self):
+    def test_returns_linkedin_caption_with_context(self):
         mock_client = MagicMock()
-        captions = {"instagram": "Check out our new launch! 🚀", "linkedin": "Excited to announce our latest product."}
-        mock_client.chat.completions.create.return_value = _mock_groq_response(json.dumps(captions))
+        caption = {"linkedin": "Excited to announce our latest product at Sofject."}
+        mock_client.chat.completions.create.return_value = _mock_groq_response(json.dumps(caption))
 
         generator = CaptionGenerator(client=mock_client)
-        result = generator.generate(context="New product launch for tech startup")
+        result = generator.generate(context="New product launch")
 
-        assert result["instagram"] == captions["instagram"]
-        assert result["linkedin"] == captions["linkedin"]
+        assert "linkedin" in result
+        assert "instagram" not in result
 
-    def test_returns_captions_without_context(self):
+    def test_returns_linkedin_caption_without_context(self):
         mock_client = MagicMock()
-        captions = {"instagram": "Amazing post! #photo", "linkedin": "Sharing this update."}
-        mock_client.chat.completions.create.return_value = _mock_groq_response(json.dumps(captions))
+        caption = {"linkedin": "Sharing this update from Sofject."}
+        mock_client.chat.completions.create.return_value = _mock_groq_response(json.dumps(caption))
 
         generator = CaptionGenerator(client=mock_client)
         result = generator.generate(context=None, filename="weekend_vibes.png")
 
-        assert "instagram" in result
         assert "linkedin" in result
-        # Verify the prompt includes filename when no context
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args[1]["messages"]
         user_msg = messages[-1]["content"]
@@ -43,7 +41,7 @@ class TestGenerate:
     def test_sends_correct_model(self):
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _mock_groq_response(
-            json.dumps({"instagram": "x", "linkedin": "y"})
+            json.dumps({"linkedin": "y"})
         )
 
         generator = CaptionGenerator(client=mock_client, model="llama-3.3-70b-versatile")
@@ -54,14 +52,13 @@ class TestGenerate:
 
     def test_handles_json_in_markdown_code_block(self):
         mock_client = MagicMock()
-        raw = '```json\n{"instagram": "Hello!", "linkedin": "Hi there."}\n```'
+        raw = '```json\n{"linkedin": "Hi there from Sofject."}\n```'
         mock_client.chat.completions.create.return_value = _mock_groq_response(raw)
 
         generator = CaptionGenerator(client=mock_client)
         result = generator.generate(context="test")
 
-        assert result["instagram"] == "Hello!"
-        assert result["linkedin"] == "Hi there."
+        assert result["linkedin"] == "Hi there from Sofject."
 
     def test_raises_on_invalid_response(self):
         mock_client = MagicMock()
@@ -73,3 +70,11 @@ class TestGenerate:
             assert False, "Should have raised ValueError"
         except ValueError as e:
             assert "Failed to parse" in str(e)
+
+    def test_system_prompt_mentions_sofject(self):
+        assert "Sofject" in SYSTEM_PROMPT
+        assert "sofject.com" in SYSTEM_PROMPT
+
+    def test_system_prompt_is_linkedin_only(self):
+        assert "Instagram" not in SYSTEM_PROMPT
+        assert "instagram" not in SYSTEM_PROMPT.lower() or "linkedin" in SYSTEM_PROMPT.lower()

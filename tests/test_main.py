@@ -36,19 +36,19 @@ def test_run_no_new_files(mock_save, mock_load, mock_get_drive, mock_get_caption
 @patch("app.main.get_drive_checker")
 @patch("app.main.load_last_checked")
 @patch("app.main.save_last_checked")
-def test_run_with_new_files(mock_save, mock_load, mock_get_drive, mock_get_caption):
+def test_run_processes_only_first_file(mock_save, mock_load, mock_get_drive, mock_get_caption):
     mock_load.return_value = datetime(2026, 4, 9, 0, 0, 0, tzinfo=timezone.utc)
 
     mock_checker = MagicMock()
     mock_checker.get_new_files.return_value = [
         {"id": "1", "name": "post_01.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T10:00:00Z"},
+        {"id": "2", "name": "post_02.png", "mimeType": "image/png", "modifiedTime": "2026-04-09T11:00:00Z"},
     ]
     mock_checker.get_text_content.return_value = "Tech launch post"
     mock_get_drive.return_value = mock_checker
 
     mock_generator = MagicMock()
     mock_generator.generate.return_value = {
-        "instagram": "Exciting launch! 🚀",
         "linkedin": "We are thrilled to announce...",
     }
     mock_get_caption.return_value = mock_generator
@@ -57,11 +57,11 @@ def test_run_with_new_files(mock_save, mock_load, mock_get_drive, mock_get_capti
 
     assert response.status_code == 200
     data = response.json()
-    assert data["files_found"] == 1
+    assert data["files_found"] == 2
     assert data["captions_generated"] == 1
     assert len(data["results"]) == 1
     assert data["results"][0]["file"] == "post_01.png"
-    assert "instagram" in data["results"][0]["captions"]
+    assert "linkedin" in data["results"][0]["captions"]
 
 
 @patch("app.main.get_caption_generator")
@@ -79,11 +79,10 @@ def test_run_uses_filename_when_no_txt(mock_save, mock_load, mock_get_drive, moc
     mock_get_drive.return_value = mock_checker
 
     mock_generator = MagicMock()
-    mock_generator.generate.return_value = {"instagram": "x", "linkedin": "y"}
+    mock_generator.generate.return_value = {"linkedin": "y"}
     mock_get_caption.return_value = mock_generator
 
     response = client.get("/api/run")
 
     assert response.status_code == 200
-    # Verify generate was called with filename, not context
     mock_generator.generate.assert_called_once_with(context=None, filename="sunset_photo.jpg")

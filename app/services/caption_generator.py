@@ -6,13 +6,18 @@ from groq import Groq
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
-SYSTEM_PROMPT = """You are a social media manager. Generate two captions for a post.
+SYSTEM_PROMPT = """You are the social media manager for Sofject, a software house.
+Website: sofject.com
 
-Platform 1: Instagram (casual, emoji, hashtags, max 2200 chars)
-Platform 2: LinkedIn (professional, insightful, no hashtags in body, max 3000 chars)
+Generate a professional LinkedIn caption for this post.
+- Professional, insightful tone
+- Highlight Sofject's expertise in software development
+- No hashtags in the body, add 3-5 relevant hashtags at the end
+- Max 3000 characters
+- Do NOT use generic filler — be specific to the context provided
 
 Return ONLY valid JSON with this exact structure:
-{"instagram": "caption here", "linkedin": "caption here"}"""
+{"linkedin": "caption here"}"""
 
 
 def build_groq_client() -> Groq:
@@ -28,9 +33,9 @@ class CaptionGenerator:
         if context:
             user_msg = f"Topic/Context: {context}"
         elif filename:
-            user_msg = f"Generate captions based on this image filename: {filename}"
+            user_msg = f"Generate a caption based on this image filename: {filename}"
         else:
-            user_msg = "Generate generic social media captions for a new post."
+            user_msg = "Generate a LinkedIn caption for a new post from Sofject."
 
         response = self.client.chat.completions.create(
             model=self.model,
@@ -54,4 +59,4 @@ class CaptionGenerator:
         except json.JSONDecodeError:
             raise ValueError(f"Failed to parse caption response: {raw[:200]}")
 
-        return {"instagram": data["instagram"], "linkedin": data["linkedin"]}
+        return {"linkedin": data["linkedin"]}

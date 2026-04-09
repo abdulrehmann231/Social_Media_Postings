@@ -61,34 +61,33 @@ def run():
         logger.info("No new files found.")
         return {"files_found": 0, "captions_generated": 0, "results": []}
 
-    results = []
-    for file in new_files:
-        context = checker.get_text_content(file["name"])
+    # Process only the first (oldest) new file per run
+    file = new_files[0]
+    context = checker.get_text_content(file["name"])
 
-        if context:
-            captions = generator.generate(context=context)
-        else:
-            captions = generator.generate(context=None, filename=file["name"])
+    if context:
+        captions = generator.generate(context=context)
+    else:
+        captions = generator.generate(context=None, filename=file["name"])
 
-        entry = {
-            "file": file["name"],
-            "file_id": file["id"],
-            "captions": captions,
-        }
-        results.append(entry)
-        logger.info("Generated captions for %s: %s", file["name"], json.dumps(captions))
+    entry = {
+        "file": file["name"],
+        "file_id": file["id"],
+        "captions": captions,
+    }
+    logger.info("Generated captions for %s: %s", file["name"], json.dumps(captions))
 
-        append_caption_log({
-            "file": file["name"],
-            "file_id": file["id"],
-            "captions": captions,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+    append_caption_log({
+        "file": file["name"],
+        "file_id": file["id"],
+        "captions": captions,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
 
     save_last_checked(datetime.now(timezone.utc))
 
     return {
         "files_found": len(new_files),
-        "captions_generated": len(results),
-        "results": results,
+        "captions_generated": 1,
+        "results": [entry],
     }
