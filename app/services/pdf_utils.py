@@ -10,3 +10,14 @@ def pdf_first_page_to_png(pdf_bytes: bytes) -> bytes:
     png_bytes = pix.tobytes("png")
     doc.close()
     return png_bytes
+
+
+def pdf_all_pages_to_png(pdf_bytes: bytes) -> list[bytes]:
+    """Extract every page of a PDF as PNG images, returned in order."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    pages: list[bytes] = []
+    for page in doc:
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        pages.append(pix.tobytes("png"))
+    doc.close()
+    return pages

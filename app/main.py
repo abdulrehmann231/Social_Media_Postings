@@ -20,7 +20,7 @@ from app.services.drive_checker import DriveChecker, build_drive_service, is_pdf
 from app.services.caption_generator import CaptionGenerator, build_groq_client
 from app.services.caption_log import append_caption_log
 from app.services.linkedin_poster import LinkedInPoster, exchange_code_for_token
-from app.services.pdf_utils import pdf_first_page_to_png
+from app.services.pdf_utils import pdf_all_pages_to_png
 
 app = FastAPI(title="Social Media Posting Agent")
 
@@ -112,13 +112,14 @@ def run():
     file_is_pdf = is_pdf(file)
     context = checker.get_text_content(file["name"])
 
-    # For PDFs, convert first page to PNG for the vision model
-    vision_image = pdf_first_page_to_png(file_bytes) if file_is_pdf else file_bytes
+    # For PDFs, send every page to the vision model so the caption reflects
+    # the whole carousel. For images, wrap the single file in a list.
+    vision_images = pdf_all_pages_to_png(file_bytes) if file_is_pdf else [file_bytes]
 
     if context:
-        captions = generator.generate(image_bytes=vision_image, context=context)
+        captions = generator.generate(images=vision_images, context=context)
     else:
-        captions = generator.generate(image_bytes=vision_image, filename=file["name"])
+        captions = generator.generate(images=vision_images, filename=file["name"])
 
     entry = {
         "file": file["name"],

@@ -147,16 +147,19 @@ def test_run_uses_filename_when_no_txt(mock_get_drive, mock_get_caption, mock_to
     response = client.get("/api/run")
 
     assert response.status_code == 200
-    mock_generator.generate.assert_called_once_with(image_bytes=b"sunset image", filename="sunset_photo.jpg")
+    mock_generator.generate.assert_called_once_with(images=[b"sunset image"], filename="sunset_photo.jpg")
 
 
-@patch("app.main.pdf_first_page_to_png", return_value=b"fake png from pdf")
+@patch(
+    "app.main.pdf_all_pages_to_png",
+    return_value=[b"page 1 png", b"page 2 png", b"page 3 png"],
+)
 @patch("app.main.get_drive_posted_folder_id", return_value="posted_folder")
 @patch("app.main.LinkedInPoster")
 @patch("app.main.load_linkedin_token", return_value="fake_token")
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_pdf_to_png):
+def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_pdf_all_pages):
     mock_checker = MagicMock()
     mock_checker.get_files.return_value = [
         {"id": "10", "name": "slides.pdf", "mimeType": "application/pdf"},
@@ -180,10 +183,13 @@ def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_to
     assert response.status_code == 200
     data = response.json()
     assert data["results"][0]["posted_to_linkedin"] is True
-    # Should convert PDF first page to PNG for vision model
-    mock_pdf_to_png.assert_called_once_with(b"fake pdf bytes")
-    # Caption generator should receive the PNG, not the raw PDF
-    mock_generator.generate.assert_called_once_with(image_bytes=b"fake png from pdf", context="Our new deck")
+    # Should convert every PDF page to PNG for vision model
+    mock_pdf_all_pages.assert_called_once_with(b"fake pdf bytes")
+    # Caption generator should receive the list of page PNGs
+    mock_generator.generate.assert_called_once_with(
+        images=[b"page 1 png", b"page 2 png", b"page 3 png"],
+        context="Our new deck",
+    )
     # Should use document upload + document post (not image)
     mock_poster.upload_document.assert_called_once_with(person_urn="urn:li:person:abc123", pdf_bytes=b"fake pdf bytes")
     mock_poster.create_document_post.assert_called_once_with(

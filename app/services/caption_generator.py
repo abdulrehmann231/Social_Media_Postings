@@ -30,23 +30,41 @@ class CaptionGenerator:
         self.client = client
         self.model = model
 
-    def generate(self, image_bytes: bytes, context: str | None = None, filename: str | None = None) -> dict:
-        if context:
-            text = f"Topic/Context: {context}"
-        elif filename:
-            text = f"Generate a caption based on this image. Filename: {filename}"
+    def generate(
+        self,
+        images: list[bytes],
+        context: str | None = None,
+        filename: str | None = None,
+    ) -> dict:
+        if not images:
+            raise ValueError("generate() requires at least one image")
+
+        is_carousel = len(images) > 1
+        if is_carousel:
+            lead = (
+                f"This is a {len(images)}-slide LinkedIn carousel. "
+                "Review every slide and write one caption that reflects the full "
+                "narrative across all slides, not just the cover."
+            )
         else:
-            text = "Generate a LinkedIn caption for this image from Sofject."
+            lead = "Generate a LinkedIn caption for this image from Sofject."
 
-        b64_image = base64.b64encode(image_bytes).decode()
+        if context:
+            text = f"{lead}\nTopic/Context: {context}"
+        elif filename:
+            text = f"{lead}\nFilename: {filename}"
+        else:
+            text = lead
 
-        user_content = [
-            {"type": "text", "text": text},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{b64_image}"},
-            },
-        ]
+        user_content: list[dict] = [{"type": "text", "text": text}]
+        for img_bytes in images:
+            b64_image = base64.b64encode(img_bytes).decode()
+            user_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64_image}"},
+                }
+            )
 
         response = self.client.chat.completions.create(
             model=self.model,
