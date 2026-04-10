@@ -151,15 +151,15 @@ def test_run_uses_filename_when_no_txt(mock_get_drive, mock_get_caption, mock_to
 
 
 @patch(
-    "app.main.pdf_all_pages_to_png",
-    return_value=[b"page 1 png", b"page 2 png", b"page 3 png"],
+    "app.main.pdf_all_pages_to_jpeg",
+    return_value=[b"\xff\xd8\xff page 1", b"\xff\xd8\xff page 2", b"\xff\xd8\xff page 3"],
 )
 @patch("app.main.get_drive_posted_folder_id", return_value="posted_folder")
 @patch("app.main.LinkedInPoster")
 @patch("app.main.load_linkedin_token", return_value="fake_token")
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_pdf_all_pages):
+def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_pdf_all_pages_jpeg):
     mock_checker = MagicMock()
     mock_checker.get_files.return_value = [
         {"id": "10", "name": "slides.pdf", "mimeType": "application/pdf"},
@@ -183,11 +183,11 @@ def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_to
     assert response.status_code == 200
     data = response.json()
     assert data["results"][0]["posted_to_linkedin"] is True
-    # Should convert every PDF page to PNG for vision model
-    mock_pdf_all_pages.assert_called_once_with(b"fake pdf bytes")
-    # Caption generator should receive the list of page PNGs
+    # Should convert every PDF page to JPEG for vision model
+    mock_pdf_all_pages_jpeg.assert_called_once_with(b"fake pdf bytes")
+    # Caption generator should receive the list of page JPEGs
     mock_generator.generate.assert_called_once_with(
-        images=[b"page 1 png", b"page 2 png", b"page 3 png"],
+        images=[b"\xff\xd8\xff page 1", b"\xff\xd8\xff page 2", b"\xff\xd8\xff page 3"],
         context="Our new deck",
     )
     # Should use document upload + document post (not image)

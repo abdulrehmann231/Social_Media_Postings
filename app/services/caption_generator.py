@@ -25,6 +25,19 @@ def build_groq_client() -> Groq:
     return Groq(api_key=os.environ["GROQ_API_KEY"])
 
 
+def _image_mime(image_bytes: bytes) -> str:
+    if image_bytes.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if image_bytes.startswith(b"GIF87a") or image_bytes.startswith(b"GIF89a"):
+        return "image/gif"
+    if image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+        return "image/webp"
+    # Many Drive sources (JFIF, unknown) still decode as JPEG; default to it.
+    return "image/jpeg"
+
+
 class CaptionGenerator:
     def __init__(self, client: Groq = None, model: str = VISION_MODEL):
         self.client = client
@@ -59,10 +72,11 @@ class CaptionGenerator:
         user_content: list[dict] = [{"type": "text", "text": text}]
         for img_bytes in images:
             b64_image = base64.b64encode(img_bytes).decode()
+            mime = _image_mime(img_bytes)
             user_content.append(
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{b64_image}"},
+                    "image_url": {"url": f"data:{mime};base64,{b64_image}"},
                 }
             )
 

@@ -158,3 +158,35 @@ class TestGenerate:
     def test_system_prompt_mentions_sofject(self):
         assert "Sofject" in SYSTEM_PROMPT
         assert "sofject.com" in SYSTEM_PROMPT
+
+    def test_jpeg_image_uses_jpeg_mime_type(self):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_groq_response(
+            json.dumps({"linkedin": "y"})
+        )
+
+        jpeg_bytes = b"\xff\xd8\xff\xe0 rest of jpeg"
+        generator = CaptionGenerator(client=mock_client)
+        generator.generate(images=[jpeg_bytes], context="t")
+
+        call_args = mock_client.chat.completions.create.call_args
+        image_part = [
+            p for p in call_args[1]["messages"][-1]["content"] if p["type"] == "image_url"
+        ][0]
+        assert image_part["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+    def test_png_image_uses_png_mime_type(self):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_groq_response(
+            json.dumps({"linkedin": "y"})
+        )
+
+        png_bytes = b"\x89PNG\r\n\x1a\n rest of png"
+        generator = CaptionGenerator(client=mock_client)
+        generator.generate(images=[png_bytes], context="t")
+
+        call_args = mock_client.chat.completions.create.call_args
+        image_part = [
+            p for p in call_args[1]["messages"][-1]["content"] if p["type"] == "image_url"
+        ][0]
+        assert image_part["image_url"]["url"].startswith("data:image/png;base64,")
