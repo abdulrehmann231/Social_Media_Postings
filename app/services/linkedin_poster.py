@@ -97,7 +97,15 @@ class LinkedInPoster:
         )
         response.raise_for_status()
 
-        data = response.json()["value"]
+        try:
+            data = response.json()["value"]
+        except ValueError as e:
+            raise RuntimeError(
+                f"LinkedIn documents initializeUpload returned non-JSON: "
+                f"status={response.status_code}, "
+                f"headers={dict(response.headers)}, "
+                f"body={response.text[:500]!r}"
+            ) from e
         upload_url = data["uploadUrl"]
         document_urn = data["document"]
 
