@@ -152,9 +152,12 @@ def run():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
-    # Move file from unposted to posted folder
-    checker.move_file(file_id=file["id"], dest_folder_id=posted_folder_id)
-    logger.info("Moved %s to posted folder.", file["name"])
+    # Only move the file to the posted folder if LinkedIn actually accepted it.
+    if entry["posted_to_linkedin"]:
+        checker.move_file(file_id=file["id"], dest_folder_id=posted_folder_id)
+        logger.info("Moved %s to posted folder.", file["name"])
+    else:
+        logger.info("Leaving %s in unposted folder (post did not succeed).", file["name"])
 
     return {
         "files_found": len(unposted_files),

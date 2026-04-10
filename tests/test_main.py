@@ -72,7 +72,7 @@ def test_run_posts_and_moves_to_posted(mock_get_drive, mock_get_caption, mock_to
 @patch("app.main.load_linkedin_token", return_value=None)
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-def test_run_moves_even_without_linkedin(mock_get_drive, mock_get_caption, mock_token, mock_posted_id):
+def test_run_does_not_move_when_no_linkedin_token(mock_get_drive, mock_get_caption, mock_token, mock_posted_id):
     mock_checker = MagicMock()
     mock_checker.get_files.return_value = [
         {"id": "1", "name": "post_01.png", "mimeType": "image/png"},
@@ -90,8 +90,41 @@ def test_run_moves_even_without_linkedin(mock_get_drive, mock_get_caption, mock_
     assert response.status_code == 200
     data = response.json()
     assert data["results"][0]["posted_to_linkedin"] is False
-    # File should still be moved to posted folder
-    mock_checker.move_file.assert_called_once_with(file_id="1", dest_folder_id="posted_folder")
+    # File must stay in unposted when LinkedIn post did not happen
+    mock_checker.move_file.assert_not_called()
+
+
+@patch("app.main.get_drive_posted_folder_id", return_value="posted_folder")
+@patch("app.main.LinkedInPoster")
+@patch("app.main.load_linkedin_token", return_value="fake_token")
+@patch("app.main.get_caption_generator")
+@patch("app.main.get_drive_checker")
+def test_run_does_not_move_on_linkedin_error(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id):
+    mock_checker = MagicMock()
+    mock_checker.get_files.return_value = [
+        {"id": "1", "name": "post_01.png", "mimeType": "image/png"},
+    ]
+    mock_checker.get_text_content.return_value = "Test"
+    mock_checker.download_file.return_value = b"image data"
+    mock_get_drive.return_value = mock_checker
+
+    mock_generator = MagicMock()
+    mock_generator.generate.return_value = {"linkedin": "Caption"}
+    mock_get_caption.return_value = mock_generator
+
+    mock_poster = MagicMock()
+    mock_poster.get_person_urn.return_value = "urn:li:person:abc"
+    mock_poster.upload_image.side_effect = Exception("LinkedIn 500")
+    mock_poster_cls.return_value = mock_poster
+
+    response = client.get("/api/run")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["results"][0]["posted_to_linkedin"] is False
+    assert "linkedin_error" in data["results"][0]
+    # File must stay in unposted on LinkedIn failure
+    mock_checker.move_file.assert_not_called()
 
 
 @patch("app.main.get_drive_posted_folder_id", return_value="posted_folder")
