@@ -85,7 +85,12 @@ def auth_linkedin_callback(code: str):
     )
     save_linkedin_token(token_data)
     logger.info("LinkedIn token saved successfully.")
-    return {"status": "ok", "message": "LinkedIn token saved. Automation is now active."}
+    return {
+        "status": "ok",
+        "message": "LinkedIn token saved. Copy access_token into the LINKEDIN_ACCESS_TOKEN env var to survive redeploys.",
+        "access_token": token_data.get("access_token"),
+        "expires_in": token_data.get("expires_in"),
+    }
 
 
 @app.get("/api/run")
