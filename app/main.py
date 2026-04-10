@@ -15,6 +15,7 @@ from app.config import (
     get_linkedin_client_secret,
     get_linkedin_redirect_uri,
     get_linkedin_access_token,
+    get_linkedin_organization_id,
 )
 from app.services.drive_checker import DriveChecker, build_drive_service, is_pdf
 from app.services.caption_generator import CaptionGenerator, build_groq_client
@@ -69,7 +70,7 @@ def auth_linkedin():
         "response_type": "code",
         "client_id": get_linkedin_client_id(),
         "redirect_uri": get_linkedin_redirect_uri(),
-        "scope": "openid profile w_member_social",
+        "scope": "openid profile w_member_social w_organization_social r_organization_social",
     })
     return RedirectResponse(f"https://www.linkedin.com/oauth/v2/authorization?{params}")
 
@@ -127,13 +128,13 @@ def run():
     if token:
         try:
             poster = LinkedInPoster(access_token=token)
-            person_urn = poster.get_person_urn()
+            author_urn = f"urn:li:organization:{get_linkedin_organization_id()}"
             if file_is_pdf:
-                doc_urn = poster.upload_document(person_urn=person_urn, pdf_bytes=file_bytes)
-                poster.create_document_post(person_urn=person_urn, text=captions["linkedin"], document_urn=doc_urn)
+                doc_urn = poster.upload_document(person_urn=author_urn, pdf_bytes=file_bytes)
+                poster.create_document_post(person_urn=author_urn, text=captions["linkedin"], document_urn=doc_urn)
             else:
-                image_asset = poster.upload_image(person_urn=person_urn, image_bytes=file_bytes)
-                poster.create_image_post(person_urn=person_urn, text=captions["linkedin"], image_asset=image_asset)
+                image_asset = poster.upload_image(person_urn=author_urn, image_bytes=file_bytes)
+                poster.create_image_post(person_urn=author_urn, text=captions["linkedin"], image_asset=image_asset)
             entry["posted_to_linkedin"] = True
             logger.info("Posted to LinkedIn: %s", file["name"])
         except Exception as e:
