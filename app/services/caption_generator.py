@@ -87,6 +87,8 @@ class CaptionGenerator:
                 {"role": "user", "content": user_content},
             ],
             temperature=0.7,
+            max_tokens=1200,
+            response_format={"type": "json_object"},
         )
 
         raw = response.choices[0].message.content
@@ -99,6 +101,8 @@ class CaptionGenerator:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError:
-            raise ValueError(f"Failed to parse caption response: {raw[:200]}")
+            raise ValueError(f"Failed to parse caption response: {raw[:1000]!r}")
 
+        if "linkedin" not in data:
+            raise ValueError(f"Caption response missing 'linkedin' key: {raw[:1000]!r}")
         return {"linkedin": data["linkedin"]}
