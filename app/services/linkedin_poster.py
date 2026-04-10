@@ -175,7 +175,9 @@ class LinkedInPoster:
             json=payload,
         )
         response.raise_for_status()
-        return response.json()
+        # /rest/posts returns 201 Created with an empty body; the new
+        # post's URN is in the x-restli-id response header.
+        return {"id": response.headers.get("x-restli-id")}
 
     def create_text_post(self, person_urn: str, text: str) -> dict:
         """Create a text-only post on LinkedIn."""

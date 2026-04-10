@@ -142,9 +142,12 @@ class TestUploadDocument:
 
 class TestCreateDocumentPost:
     def test_creates_carousel_post(self):
+        # LinkedIn /rest/posts returns 201 Created with empty body and
+        # the created post URN in the x-restli-id response header.
         mock_response = MagicMock()
         mock_response.status_code = 201
-        mock_response.json.return_value = {"id": "urn:li:share:carousel1"}
+        mock_response.headers = {"x-restli-id": "urn:li:share:carousel1"}
+        mock_response.text = ""
 
         poster = LinkedInPoster(access_token="fake_token")
         with patch("app.services.linkedin_poster.httpx.post", return_value=mock_response) as mock_post:
@@ -160,6 +163,22 @@ class TestCreateDocumentPost:
         assert body["commentary"] == "Check out our carousel!"
         assert body["distribution"]["feedDistribution"] == "MAIN_FEED"
         assert body["content"]["media"]["id"] == "urn:li:document:D789"
+
+    def test_returns_empty_id_when_header_missing(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.headers = {}
+        mock_response.text = ""
+
+        poster = LinkedInPoster(access_token="fake_token")
+        with patch("app.services.linkedin_poster.httpx.post", return_value=mock_response):
+            result = poster.create_document_post(
+                person_urn="urn:li:person:abc123",
+                text="Carousel",
+                document_urn="urn:li:document:D789",
+            )
+
+        assert result == {"id": None}
 
 
 class TestCreateTextPost:
