@@ -206,4 +206,4 @@ def test_auth_linkedin_redirects():
     response = client.get("/auth/linkedin", follow_redirects=False)
     assert response.status_code == 307
     assert "linkedin.com/oauth/v2/authorization" in response.headers["location"]
-    assert "w_member_social" in response.headers["location"]
+    assert "w_organization_social" in response.headers["location"]

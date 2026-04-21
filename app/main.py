@@ -69,7 +69,7 @@ def auth_linkedin():
         "response_type": "code",
         "client_id": get_linkedin_client_id(),
         "redirect_uri": get_linkedin_redirect_uri(),
-        "scope": "openid profile w_member_social",
+        "scope": "w_organization_social",
     })
     return RedirectResponse(f"https://www.linkedin.com/oauth/v2/authorization?{params}")
 

@@ -30,3 +30,8 @@ def get_linkedin_redirect_uri() -> str:
 
 def get_linkedin_access_token() -> str | None:
     return os.environ.get("LINKEDIN_ACCESS_TOKEN") or None
+
+
+def get_linkedin_organization_urn() -> str:
+    org_id = os.environ["LINKEDIN_ORGANIZATION_ID"]
+    return f"urn:li:organization:{org_id}"
