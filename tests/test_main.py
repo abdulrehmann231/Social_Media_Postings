@@ -31,12 +31,13 @@ def test_run_no_unposted_files(mock_token, mock_get_drive, mock_get_caption, moc
     assert data["captions_generated"] == 0
 
 
+@patch("app.main.get_linkedin_organization_urn", return_value="urn:li:organization:104361510")
 @patch("app.main.get_drive_posted_folder_id", return_value="posted_folder")
 @patch("app.main.LinkedInPoster")
 @patch("app.main.load_linkedin_token", return_value="fake_token")
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-def test_run_posts_and_moves_to_posted(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id):
+def test_run_posts_and_moves_to_posted(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_org_urn):
     mock_checker = MagicMock()
     mock_checker.get_files.return_value = [
         {"id": "1", "name": "post_01.png", "mimeType": "image/png"},
@@ -51,7 +52,6 @@ def test_run_posts_and_moves_to_posted(mock_get_drive, mock_get_caption, mock_to
     mock_get_caption.return_value = mock_generator
 
     mock_poster = MagicMock()
-    mock_poster.get_person_urn.return_value = "urn:li:person:abc123"
     mock_poster.upload_image.return_value = "urn:li:digitalmediaAsset:D123"
     mock_poster.create_image_post.return_value = {"id": "urn:li:share:12345"}
     mock_poster_cls.return_value = mock_poster
@@ -64,6 +64,16 @@ def test_run_posts_and_moves_to_posted(mock_get_drive, mock_get_caption, mock_to
     assert data["captions_generated"] == 1
     assert data["results"][0]["file"] == "post_01.png"
     assert data["results"][0]["posted_to_linkedin"] is True
+    # Author URN should be the organization, not a person
+    mock_poster.get_person_urn.assert_not_called()
+    mock_poster.upload_image.assert_called_once_with(
+        person_urn="urn:li:organization:104361510", image_bytes=b"fake image bytes"
+    )
+    mock_poster.create_image_post.assert_called_once_with(
+        person_urn="urn:li:organization:104361510",
+        text="Caption here",
+        image_asset="urn:li:digitalmediaAsset:D123",
+    )
     # Verify file was moved to posted folder
     mock_checker.move_file.assert_called_once_with(file_id="1", dest_folder_id="posted_folder")
 
@@ -94,12 +104,13 @@ def test_run_does_not_move_when_no_linkedin_token(mock_get_drive, mock_get_capti
     mock_checker.move_file.assert_not_called()
 
 
+@patch("app.main.get_linkedin_organization_urn", return_value="urn:li:organization:104361510")
 @patch("app.main.get_drive_posted_folder_id", return_value="posted_folder")
 @patch("app.main.LinkedInPoster")
 @patch("app.main.load_linkedin_token", return_value="fake_token")
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-def test_run_does_not_move_on_linkedin_error(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id):
+def test_run_does_not_move_on_linkedin_error(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_org_urn):
     mock_checker = MagicMock()
     mock_checker.get_files.return_value = [
         {"id": "1", "name": "post_01.png", "mimeType": "image/png"},
@@ -113,7 +124,6 @@ def test_run_does_not_move_on_linkedin_error(mock_get_drive, mock_get_caption, m
     mock_get_caption.return_value = mock_generator
 
     mock_poster = MagicMock()
-    mock_poster.get_person_urn.return_value = "urn:li:person:abc"
     mock_poster.upload_image.side_effect = Exception("LinkedIn 500")
     mock_poster_cls.return_value = mock_poster
 
@@ -150,6 +160,7 @@ def test_run_uses_filename_when_no_txt(mock_get_drive, mock_get_caption, mock_to
     mock_generator.generate.assert_called_once_with(images=[b"sunset image"], filename="sunset_photo.jpg")
 
 
+@patch("app.main.get_linkedin_organization_urn", return_value="urn:li:organization:104361510")
 @patch(
     "app.main.pdf_all_pages_to_jpeg",
     return_value=[b"\xff\xd8\xff page 1", b"\xff\xd8\xff page 2", b"\xff\xd8\xff page 3"],
@@ -159,7 +170,7 @@ def test_run_uses_filename_when_no_txt(mock_get_drive, mock_get_caption, mock_to
 @patch("app.main.load_linkedin_token", return_value="fake_token")
 @patch("app.main.get_caption_generator")
 @patch("app.main.get_drive_checker")
-def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_pdf_all_pages_jpeg):
+def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_token, mock_poster_cls, mock_posted_id, mock_pdf_all_pages_jpeg, mock_org_urn):
     mock_checker = MagicMock()
     mock_checker.get_files.return_value = [
         {"id": "10", "name": "slides.pdf", "mimeType": "application/pdf"},
@@ -173,7 +184,6 @@ def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_to
     mock_get_caption.return_value = mock_generator
 
     mock_poster = MagicMock()
-    mock_poster.get_person_urn.return_value = "urn:li:person:abc123"
     mock_poster.upload_document.return_value = "urn:li:document:D789"
     mock_poster.create_document_post.return_value = {"id": "urn:li:share:carousel1"}
     mock_poster_cls.return_value = mock_poster
@@ -190,10 +200,13 @@ def test_run_pdf_creates_carousel_post(mock_get_drive, mock_get_caption, mock_to
         images=[b"\xff\xd8\xff page 1", b"\xff\xd8\xff page 2", b"\xff\xd8\xff page 3"],
         context="Our new deck",
     )
-    # Should use document upload + document post (not image)
-    mock_poster.upload_document.assert_called_once_with(person_urn="urn:li:person:abc123", pdf_bytes=b"fake pdf bytes")
+    # Should use document upload + document post (not image), with org URN as author
+    mock_poster.get_person_urn.assert_not_called()
+    mock_poster.upload_document.assert_called_once_with(
+        person_urn="urn:li:organization:104361510", pdf_bytes=b"fake pdf bytes"
+    )
     mock_poster.create_document_post.assert_called_once_with(
-        person_urn="urn:li:person:abc123",
+        person_urn="urn:li:organization:104361510",
         text="Check out our carousel!",
         document_urn="urn:li:document:D789",
     )
